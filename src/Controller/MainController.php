@@ -11,11 +11,6 @@ use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
-function __private_php_load(string $fullPath, Request $request): mixed
-{
-    return @include($fullPath);
-}
-
 class MainController extends AbstractController
 {
     const EXTENSIONS = [
@@ -129,7 +124,8 @@ class MainController extends AbstractController
      */
     private function loadPHP(string $fullPath): mixed
     {
-        return __private_php_load($fullPath, $this->request);
+        $request = $this->request;
+        return @include($fullPath);
     }
 
     private function identifyFile(string $path): array
