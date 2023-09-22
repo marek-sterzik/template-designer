@@ -1,0 +1,13 @@
+<!doctype html>
+<html>
+<body>
+    <h1>Toto je test šablonovacího systému</h1>
+    <h2>Informace o uživateli {{ user }}</h2>
+    Koníčky:
+    <ul>
+    {% for hobby in hobbies %}
+        <li>{{ hobby }}</li>
+    {% endfor %}
+    </ul>
+</body>
+</html>

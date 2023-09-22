@@ -1,0 +1,7 @@
+{
+    "template": "test.html.twig",
+    "vars": {
+        "user": "František Vomáčka",
+        "hobbies": ["víno", "ženy", "zpěv"]
+    }
+}
