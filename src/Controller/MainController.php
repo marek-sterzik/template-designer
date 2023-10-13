@@ -57,7 +57,11 @@ class MainController extends AbstractController
 
         $data = $this->loadFile($fullPath, $type, $request);
 
-        return $this->render($data['template'], $data['vars']);
+        if (isset($data['redirect']) && is_string($data['redirect'])) {
+            return $this->redirect($data['redirect']);
+        } else {
+            return $this->render($data['template'], $data['vars']);
+        }
     }
 
     private function loadFile(string $fullPath, string $type, Request $request): array
@@ -74,7 +78,9 @@ class MainController extends AbstractController
                 throw new HttpException(500, sprintf("Internal server error: Unknown method: %s", $method));
             }
             $data = $this->$method($fullPath, $request);
-            if (!is_array($data) || !isset($data['template']) || !is_string($data['template'])) {
+            $templatePresent = is_array($data) && isset($data['template']) && is_string($data['template']);
+            $redirectPresent = is_array($data) && isset($data['redirect']) && is_string($data['redirect']);
+            if (!$templatePresent && !$redirectPresent) {
                 throw new HttpException(500, "Page returned invalid data");
             }
 
@@ -85,7 +91,7 @@ class MainController extends AbstractController
                 throw new HttpException(500, "Page returned invalid data");
             }
             foreach (array_keys($data) as $key) {
-                if (in_array($key, ['vars', 'template'])) {
+                if (in_array($key, ['vars', 'template', 'redirect'])) {
                     continue;
                 }
                 if (!isset($data['vars'][$key])) {
