@@ -1,0 +1,17 @@
+#!/bin/bash
+
+cd "$(dirname "$(which "$0")")/.."
+
+ok=0
+while [ "$ok" = 0 ]; do
+    read -p "Please enter your full name (name and surname): " name
+    name="`echo "$name" | sed 'y/ěščřžýáíéťóúůď/escrzyaietouud/;y/ĚŠČŘŽÝÁÍÉŤÓÚůĎ/ESCRZYAIETOUUD/' | tr 'A-Z' 'a-z'`"
+    name="`echo "$name" | sed 's/^[[:space:]]\+//;s/[[:space:]]\+$//;s/[[:space:]]\+/_/g'`"
+    if echo "$name" | grep -q '^[a-z]\+\(_[a-z]\+\)*$'; then
+        ok=1
+    else
+        echo "Invalid name"
+    fi
+done
+
+tar --exclude=public/index.php --exclude=public/js --exclude=public/.htaccess -czf "package-$name.tar.gz" pages/ templates/ public/ && echo "Package created successfully"
