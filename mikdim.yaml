@@ -1,0 +1,14 @@
+images:
+    - name: main
+      prepare-command:
+        - "bin/jscompile --production"
+        - "rm -rf var/cache var/logs"
+      build: "docker/webserver"
+      project-dir: "/app"
+      subdir: "."
+      exclude:
+        - docker
+        - js
+        - node_modules
+        - standards
+        - tests

@@ -32,9 +32,7 @@ class MainController extends AbstractController
     {
     }
 
-    /**
-     * @Route("/{path}", name="main", requirements={"path"=".*"})
-     */
+    #[Route("/{path}", name: "main", requirements: ["path" => ".*"])]
     public function index(string $path, Request $request): Response
     {
         list($path, $wantDir) = $this->parsePath("/" . $path);

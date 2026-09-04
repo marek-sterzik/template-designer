@@ -1,0 +1,26 @@
+#!/bin/bash
+
+set -e
+
+cd "`dirname "$0"`/.."
+
+
+if ! lib/write-env; then
+    if [ "$APP_ENV" != "dev" ]; then
+        echo "Error: writing environment variable to .env.local failed" 1>&2
+        exit 1
+    else
+        echo "Warning: writing environment variable to .env.local failed" 1>&2
+    fi
+fi
+
+if [ -n "$(find migrations/ -iname '*.php')" ]; then
+    if ! lib/console doctrine:migrations:migrate --no-interaction; then
+        if [ "$APP_ENV" != "dev" ]; then
+            echo "Error: unable to migrate database" 1>&2
+            exit 1
+        else
+            echo "Warning: unable to migrate database" 1>&2
+        fi
+    fi
+fi

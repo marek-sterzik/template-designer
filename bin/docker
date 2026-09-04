@@ -21,14 +21,20 @@ docker_compose () {
     export WWW_DATA_GID="`id -g`"
     test -f ".config.env" && . .config.env
     if [ "$RUNTIME_PLATFORM" == "windows" ]; then
-        winpty docker-compose "$@"
+        winpty docker compose "$@"
     else
-        docker-compose "$@"
+        docker compose "$@"
     fi
 }
 
 docker_configure() {
     . scripts/configure
+}
+
+docker_configure_cond() {
+    if [ ! -f ".config.env" ]; then
+        docker_configure
+    fi
 }
 
 do_initialize_deploy() {
@@ -87,7 +93,11 @@ parse_user_name() {
     if echo "$1" | grep -q ':'; then
         echo "$1" | cut -d: -f 2
     else
-        echo "www-data"
+        if [ "$1" = "db" ]; then
+            echo "mysql"
+        else
+            echo "www-data"
+        fi
     fi
 }
 
@@ -98,9 +108,9 @@ parse_operation() {
         operation="exec"
     fi
     if [ "$operation" = "run" ]; then
-	echo run
+        echo run
     else
-	echo exec
+        echo exec
     fi
 }
 
@@ -123,10 +133,19 @@ docker_exec() {
     tflag=""
     test -t 0 || tflag="-T"
 
+    cmd_prefix=""
+    if [ "$container" = "webserver" -a "$operation" = "exec" ]; then
+        if [ "$user" = "www-data" ]; then
+            cmd_prefix=x
+            user=root
+        fi
+        
+    fi
+
     if [ "$#" = 0 ]; then
-        docker_compose $operation $tflag --user "$user" "$container" bash
+        docker_compose $operation $tflag --user "$user" "$container" $cmd_prefix bash
     else
-        docker_compose $operation $tflag --user "$user" "$container" "$@"
+        docker_compose $operation $tflag --user "$user" "$container" $cmd_prefix "$@"
     fi
 }
 
@@ -146,6 +165,8 @@ show_help() {
     echo "        stop all docker containers" 1>&2
     echo "    initialize" 1>&2
     echo "        initialize the application" 1>&2
+    echo "    start" 1>&2
+    echo "        start the whole application (configure & up & initialize)" 1>&2
     echo "    prod-update" 1>&2
     echo "        make production update of the application" 1>&2
     echo "    prepare-deploy" 1>&2
@@ -175,12 +196,16 @@ shift
 case "$cmd" in
 config|configure)
     docker_configure "$@";;
-up|start)
+up)
     docker_up "$@";;
 down|stop)
     docker_down "$@";;
 init|initialize)
     docker_initialize "$@";;
+start)
+    docker_configure_cond
+    docker_up
+    docker_initialize;;
 prod-update|production-update|update-prod|update-production)
     docker_prod_update "$@";;
 prepare-deploy|deploy-prepare)
