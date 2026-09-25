@@ -6,6 +6,7 @@ use Exception;
 use Symfony\Component\Yaml\Yaml;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -27,19 +28,88 @@ class MainController extends AbstractController
     ];
 
     private ?Request $request = null;
+    private array $recursionProtection = [];
 
-    public function __construct(private string $baseDir)
+    public function __construct(private RequestStack $requestStack, private string $baseDir)
     {
     }
 
     #[Route("/{path}", name: "main", requirements: ["path" => ".*"])]
-    public function index(string $path, Request $request): Response
+    public function index(string $path): Response
+    {
+        $data = $this->loadTemplateDefRecursively($path);
+
+        $templatePresent = is_array($data) && isset($data['template']) && is_string($data['template']);
+        $redirectPresent = is_array($data) && isset($data['redirect']) && is_string($data['redirect']);
+
+        if (!$templatePresent && !$redirectPresent) {
+            throw new HttpException(500, "Page returned invalid data (missing either template or redirect directive)");
+        }
+
+        if (isset($data['redirect']) && is_string($data['redirect'])) {
+            return $this->redirect($data['redirect']);
+        } else {
+            return $this->render($data['template'], $data['vars']);
+        }
+    }
+
+    private function composePath(string $basePath, string $relativePath): string
+    {
+        if (substr($relativePath, 0, 1) === '/') {
+            return $relativePath;
+        }
+        return rtrim(dirname($basePath), '/') . '/' . $relativePath;
+    }
+
+    private function loadTemplateDefRecursively(string $path): array
     {
         list($path, $wantDir) = $this->parsePath("/" . $path);
+        if (isset($this->recursionProtection[$path])) {
+            throw new HttpException(500, "Recursion in template definition extension");
+        }
+        $this->recursionProtection[$path] = true;
+        try {
+            $data = $this->loadTemplateDef($path, $wantDir);
+            if (isset($data['extends'])) {
+                if (!is_string($data['extends'])) {
+                    throw new HttpException(500, "Page returned invalid data (invalid extends)");
+                }
+                $path2 = $this->composePath($path, $data['extends']);
+                $data = $this->mergeTemplateDefs($this->loadTemplateDefRecursively($path2), $data);
+                unset($data['extends']);
+            }
+            return $data;
+        } finally {
+            unset($this->recursionProtection[$path]);
+        }
+    }
+
+    private function mergeTemplateDefs(array $def1, array $def2): array
+    {
+        $final = [];
+        foreach ($def1 as $key => $value) {
+            if ($value !== null) {
+                $final[$key] = $value;
+            }
+        }
+        foreach ($def2 as $key => $value) {
+            if ($value !== null) {
+                if ($key === 'vars' && isset($final[$key])) {
+                    $final[$key] = array_merge($final[$key], $value);
+                } else {
+                    $final[$key] = $value;
+                }
+            }
+        }
+        return $final;
+    }
+
+    private function loadTemplateDef(string $path, bool $wantDir): array
+    {
         list($type, $fullPath) = $this->identifyFile($path);
         if ($type === 'dir') {
             if (!$wantDir) {
-                return $this->redirectToRoute('main', ['path' => $path . '/']);
+                return ["redirect" => $path . '/'];
             }
             $path = $path . '/index';
             list($type, $fullPath) = $this->identifyFile($path);
@@ -53,19 +123,13 @@ class MainController extends AbstractController
             throw new NotFoundHttpException("File not found");
         }
 
-        $data = $this->loadFile($fullPath, $type, $request);
-
-        if (isset($data['redirect']) && is_string($data['redirect'])) {
-            return $this->redirect($data['redirect']);
-        } else {
-            return $this->render($data['template'], $data['vars']);
-        }
+        return $this->loadFile($fullPath, $type);
     }
 
-    private function loadFile(string $fullPath, string $type, Request $request): array
+    private function loadFile(string $fullPath, string $type): array
     {
         $oldRequest = $this->request;
-        $this->request = $request;
+        $this->request = $this->requestStack->getCurrentRequest();
         try {
             if (!isset(self::LOADER_METHODS[$type])) {
                 throw new HttpException(500, sprintf("Internal server error: Invalid loader type: %s", $type));
@@ -75,12 +139,7 @@ class MainController extends AbstractController
             if (!is_callable([$this, $method])) {
                 throw new HttpException(500, sprintf("Internal server error: Unknown method: %s", $method));
             }
-            $data = $this->$method($fullPath, $request);
-            $templatePresent = is_array($data) && isset($data['template']) && is_string($data['template']);
-            $redirectPresent = is_array($data) && isset($data['redirect']) && is_string($data['redirect']);
-            if (!$templatePresent && !$redirectPresent) {
-                throw new HttpException(500, "Page returned invalid data");
-            }
+            $data = $this->$method($fullPath);
 
             if (!isset($data['vars'])) {
                 $data['vars'] = [];
@@ -89,7 +148,7 @@ class MainController extends AbstractController
                 throw new HttpException(500, "Page returned invalid data");
             }
             foreach (array_keys($data) as $key) {
-                if (in_array($key, ['vars', 'template', 'redirect'])) {
+                if (in_array($key, ['vars', 'template', 'redirect', 'extends'])) {
                     continue;
                 }
                 if (!isset($data['vars'][$key])) {
@@ -110,6 +169,7 @@ class MainController extends AbstractController
     {
         return YAML::parseFile($fullPath);
     }
+
 
     /**
      * @SuppressWarnings(PHPMD.UnusedPrivateMethod)
